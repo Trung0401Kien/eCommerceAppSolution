@@ -1,4 +1,5 @@
-﻿using eCommerceApp.Application.Services.Interface.Cart;
+﻿using eCommerceApp.Application.Services.Interface;
+using eCommerceApp.Application.Services.Interface.Cart;
 using eCommerceApp.Application.Services.Interface.Logging;
 using eCommerceApp.Domain.Entities;
 using eCommerceApp.Domain.Entities.Identity;
@@ -11,6 +12,7 @@ using eCommerceApp.Infrastructure.Repositories;
 using eCommerceApp.Infrastructure.Repositories.Authentication;
 using eCommerceApp.Infrastructure.Repositories.Cart;
 using eCommerceApp.Infrastructure.Services;
+using eCommerceApp.Infrastructure.Services.RedisCache;
 using EntityFramework.Exceptions.SqlServer;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
@@ -19,6 +21,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using StackExchange.Redis;
 using System.Text;
 
 namespace eCommerceApp.Infrastructure.DependencyInjection
@@ -59,6 +62,7 @@ namespace eCommerceApp.Infrastructure.DependencyInjection
                 options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
             }).AddJwtBearer(options =>
             {
+                options.RequireHttpsMetadata = false;
                 options.SaveToken = true;
                 options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters()
                 {
@@ -67,11 +71,17 @@ namespace eCommerceApp.Infrastructure.DependencyInjection
                     ValidateLifetime = true,
                     RequireExpirationTime = true,
                     ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["JWT:Key"])),
                     ValidIssuer = config["JWT:Issuer"],
                     ValidAudience = config["JWT:Audience"],
                     ClockSkew = TimeSpan.Zero,
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["JWT:Key"]!))
                 };
+            });
+
+            services.AddSingleton<IConnectionMultiplexer>(sp =>
+            {
+                var configuration = config.GetSection("RedisConnection:ConnectionString").Value;
+                return ConnectionMultiplexer.Connect(configuration);
             });
 
             services.AddScoped<IUserManagement, UserManagement>();
@@ -79,6 +89,7 @@ namespace eCommerceApp.Infrastructure.DependencyInjection
             services.AddScoped<IRoleManagement, RoleManagement>();
             services.AddScoped<IPaymentMethod, PaymentMethodRepository>();
             services.AddScoped<IPaymentService, StripePaymentService>();
+            services.AddTransient<ICacheService, RedisCacheService>();
 
             Stripe.StripeConfiguration.ApiKey = config["Stripe:SecretKey"];
             return services;
@@ -87,6 +98,7 @@ namespace eCommerceApp.Infrastructure.DependencyInjection
         public static IApplicationBuilder UseInfrastructureService(this IApplicationBuilder app)
         {
             app.UseMiddleware<ExceptionHandlingMiddleware>();
+            app.UseMiddleware<RedisSessionMiddleware>();
             return app;
         }
 

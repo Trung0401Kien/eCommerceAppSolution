@@ -19,6 +19,20 @@ namespace eCommerceApp.Host.Controllers
         public async Task<IActionResult> LoginUser(LoginUser user)
         {
             var result = await authenticationService.LoginUser(user);
+            if (result.Success)
+            {
+                var options = new CookieOptions
+                {
+                    HttpOnly = true,
+                    Secure = true,
+                    Expires = DateTime.UtcNow.AddHours(2), // Set token expiration time
+                    SameSite = SameSiteMode.Strict // Optional, for CSRF protection
+                };
+
+
+                Response.Cookies.Append("Access_Token", result.Token, options);
+                Response.Cookies.Append("SessionId", result.SessionId, options);
+            }
             return result.Success ? Ok(result) : BadRequest(result);
         }
 

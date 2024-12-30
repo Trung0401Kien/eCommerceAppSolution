@@ -10,6 +10,6 @@ namespace eCommerceApp.Domain.Interfaces.Authentication
         Task<string> GetUserIdByRefreshToken(string refreshToken);
         Task<int> AddRefreshToken(string userId, string refreshToken);
         Task<int> UpdateRefreshToken(string userId, string refreshToken);
-        string GenerateToken(List<Claim> claims);
+        string GenerateToken(List<Claim> claims, string sessionId);
     }
 }

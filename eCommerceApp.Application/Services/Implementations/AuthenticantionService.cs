@@ -1,19 +1,21 @@
 ﻿using AutoMapper;
 using eCommerceApp.Application.DTOs;
 using eCommerceApp.Application.DTOs.Identity;
+using eCommerceApp.Application.Services.Interface;
 using eCommerceApp.Application.Services.Interface.Authentication;
 using eCommerceApp.Application.Services.Interface.Logging;
 using eCommerceApp.Application.Validations;
 using eCommerceApp.Domain.Entities.Identity;
 using eCommerceApp.Domain.Interfaces.Authentication;
 using FluentValidation;
+using Microsoft.AspNetCore.SignalR;
 
 namespace eCommerceApp.Application.Services.Implementations
 {
     public class AuthenticantionService(ITokenManagement tokenManagement, IUserManagement userManagement,
         IRoleManagement roleManagement, IAppLogger<AuthenticantionService> logger,
         IMapper mapper, IValidator<CreateUser> createUserValidator, IValidator<LoginUser> loginUserValidator,
-        IValidationService validationService) : IAuthenticationService
+        IValidationService validationService, ICacheService cacheService, IHubContext<SessionHub> signalRHubContext) : IAuthenticationService
     {
         public async Task<ServiceResponse> CreateUser(CreateUser createUser)
         {
@@ -34,12 +36,9 @@ namespace eCommerceApp.Application.Services.Implementations
 
             if (!assignedResult)
             {
-                // remove user
                 int removeUserResult = await userManagement.RemoveUserByEmail(_user!.Email!);
                 if (removeUserResult <= 0)
                 {
-                    // error occurred while rolling back changes
-                    //then log the error
                     logger.LogError(new Exception($"User with Email at {_user.Email} failed to be remove as a result of role assigning issue"), "User could not be assigned Role");
                     return new ServiceResponse { Message = "Error occurred in creating account" };
                 }
@@ -61,10 +60,16 @@ namespace eCommerceApp.Application.Services.Implementations
                 return new LoginResponse(Message: "Email not found or invalid credentials");
 
             var _user = await userManagement.GetUserByEmail(loginUser.Email);
-            var claims = await userManagement.GetUserClaims(loginUser!.Email!);
+            var claims = await userManagement.GetUserClaims(loginUser.Email);
 
-            string jwtoken = tokenManagement.GenerateToken(claims);
+            var sessionId = Guid.NewGuid().ToString();
+            string jwtoken = tokenManagement.GenerateToken(claims, sessionId);
             string refreshToken = tokenManagement.GetRefreshToken();
+
+            bool isSessionSaved = await cacheService.CreateNewSessionAsync(_user.Id.ToString(), sessionId);
+
+            if (!isSessionSaved)
+                return new LoginResponse(Message: "Failed to create session");
 
             int saveTokenResult = 0;
             bool userTokenCheck = await tokenManagement.ValidateRefreshToken(refreshToken);
@@ -72,8 +77,9 @@ namespace eCommerceApp.Application.Services.Implementations
                 saveTokenResult = await tokenManagement.UpdateRefreshToken(_user.Id, refreshToken);
             else
                 saveTokenResult = await tokenManagement.AddRefreshToken(_user.Id, refreshToken);
+
             return saveTokenResult <= 0 ? new LoginResponse(Message: "Internal error occurred while authenticating") :
-                new LoginResponse(Success: true, Token: jwtoken, RefreshToken: refreshToken);
+                new LoginResponse(Success: true, Token: jwtoken, RefreshToken: refreshToken, SessionId: sessionId);
         }
 
         public async Task<LoginResponse> ReviveToken(string refreshToken)
@@ -86,7 +92,7 @@ namespace eCommerceApp.Application.Services.Implementations
             AppUser? user = await userManagement.GetUserById(userId);
             var claims = await userManagement.GetUserClaims(user!.Email!);
 
-            string newJwtToken = tokenManagement.GenerateToken(claims);
+            string newJwtToken = tokenManagement.GenerateToken(claims, null);
             string newRefreshToken = tokenManagement.GetRefreshToken();
             await tokenManagement.UpdateRefreshToken(userId, newRefreshToken);
 

@@ -22,6 +22,7 @@ namespace eCommerceApp.Application.DependencyInjection
             services.AddValidatorsFromAssemblyContaining<CreateUserValidator>();
             services.AddScoped<IValidationService, ValidationService>();
             services.AddScoped<IAuthenticationService, AuthenticantionService>();
+            services.AddSignalR();
             return services;
         }
     }

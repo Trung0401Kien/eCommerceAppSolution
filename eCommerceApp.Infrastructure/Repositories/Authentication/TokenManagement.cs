@@ -24,13 +24,14 @@ namespace eCommerceApp.Infrastructure.Repositories.Authentication
             return await context.SaveChangesAsync();
         }
 
-        public string GenerateToken(List<Claim> claims)
+        public string GenerateToken(List<Claim> claims, string sessionId)
         {
+            claims.Add(new Claim("sessionId", sessionId));
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["JWT:Key"]!));
             var cred = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-            var expiration = DateTime.UtcNow.AddHours(2);
+            var expiration = DateTime.UtcNow.AddDays(1);
             var token = new JwtSecurityToken(
-                issuer: config["JWT:Key"],
+                issuer: config["JWT:Issuer"],
                 audience: config["JWT:Audience"],
                 claims: claims,
                 expires: expiration,

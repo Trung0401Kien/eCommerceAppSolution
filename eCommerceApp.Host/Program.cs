@@ -39,15 +39,15 @@ try
     {
         app.UseSwagger();
         app.UseSwaggerUI();
+
     }
     app.UseInfrastructureService();
-
     app.UseHttpsRedirection();
-
     app.UseAuthorization();
 
     app.MapControllers();
     Log.Logger.Information("Application is running.......");
+    //app.MapHub<SessionHub>("/sessionHub");
 
     app.Run();
 }
